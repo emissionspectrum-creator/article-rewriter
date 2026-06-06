@@ -15,6 +15,25 @@ import httpx
 app = FastAPI()
 BASE_DIR = Path(__file__).parent
 jobs: dict = {}
+BATCH_HISTORY_FILE = BASE_DIR / "batch_history.json"
+
+
+def load_batch_history() -> list:
+    try:
+        if BATCH_HISTORY_FILE.exists():
+            return json.loads(BATCH_HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return []
+
+
+def save_batch_history(batch_id: str, created_at: str, total: int):
+    history = [h for h in load_batch_history() if h.get("batch_id") != batch_id]
+    history.insert(0, {"batch_id": batch_id, "created_at": created_at, "total": total})
+    try:
+        BATCH_HISTORY_FILE.write_text(json.dumps(history[:2], ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
 
 
 @app.get("/")
@@ -158,6 +177,111 @@ async def batch_status(batch_id: str):
         "pct": pct,
         "created_at": created_str,
     }
+
+
+@app.get("/batch-history")
+def get_batch_history():
+    return load_batch_history()
+
+
+@app.get("/download-batch/{batch_id}")
+async def download_batch_results(batch_id: str, output_folder: str, input_folder: str = ""):
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    async def generate():
+        if not api_key:
+            yield f"data: {json.dumps({'type': 'error', 'message': '未設定 ANTHROPIC_API_KEY'})}\n\n"
+            return
+
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+
+        output_path = Path(output_folder.strip())
+        try:
+            output_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'無法建立輸出資料夾：{e}'})}\n\n"
+            return
+
+        # 優先讀取提交時儲存的檔名對應
+        custom_id_to_name: dict[str, str] | None = None
+        map_file = BASE_DIR / f"{batch_id}.map.json"
+        if map_file.exists():
+            try:
+                custom_id_to_name = json.loads(map_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        # 若對應檔不存在，嘗試從 input_folder 重建
+        if custom_id_to_name is None:
+            if not input_folder.strip():
+                yield f"data: {json.dumps({'type': 'error', 'message': '找不到批次檔名對應記錄，請填寫輸入資料夾以重建對應'})}\n\n"
+                return
+            input_path = Path(input_folder.strip())
+            if not input_path.is_dir():
+                yield f"data: {json.dumps({'type': 'error', 'message': f'找不到輸入資料夾：{input_folder}'})}\n\n"
+                return
+            txt_files = sorted(f for f in input_path.iterdir() if f.is_file() and f.suffix.lower() == ".txt")
+            custom_id_to_name = {f"file_{i:04d}": f.name for i, f in enumerate(txt_files)}
+
+        total = len(custom_id_to_name)
+
+        try:
+            batch = await client.messages.batches.retrieve(batch_id)
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'批次查詢失敗：{str(e)[:200]}'})}\n\n"
+            return
+
+        if batch.processing_status != "ended":
+            status_map = {"in_progress": "處理中", "canceling": "取消中"}
+            status = status_map.get(batch.processing_status, batch.processing_status)
+            yield f"data: {json.dumps({'type': 'error', 'message': f'批次尚未完成，目前狀態：{status}'})}\n\n"
+            return
+
+        succeeded = 0
+        failed = 0
+        failed_files = []
+        total_tokens = 0
+        t0 = time.time()
+
+        try:
+            async for result in await client.messages.batches.results(batch_id):
+                filename = custom_id_to_name.get(result.custom_id)
+                if not filename:
+                    continue
+                if result.result.type == "succeeded":
+                    msg    = result.result.message
+                    text   = msg.content[0].text if msg.content else ""
+                    tokens = (msg.usage.input_tokens or 0) + (msg.usage.output_tokens or 0)
+                    total_tokens += tokens
+                    try:
+                        (output_path / filename).write_text(text, encoding="utf-8")
+                        succeeded += 1
+                        yield f"data: {json.dumps({'type': 'batch_file_result', 'filename': filename, 'tokens': tokens, 'success': True})}\n\n"
+                    except Exception as e:
+                        failed += 1
+                        failed_files.append({"filename": filename, "error": f"寫入失敗：{e}"})
+                        yield f"data: {json.dumps({'type': 'batch_file_result', 'filename': filename, 'tokens': tokens, 'success': False, 'error': f'寫入失敗：{e}'})}\n\n"
+                else:
+                    err_type  = result.result.type
+                    error_msg = getattr(result.result, "error", None)
+                    error_msg = getattr(error_msg, "message", str(error_msg)) if error_msg else \
+                                {"expired": "已逾期", "canceled": "已取消"}.get(err_type, err_type)
+                    failed += 1
+                    failed_files.append({"filename": filename, "error": error_msg})
+                    yield f"data: {json.dumps({'type': 'batch_file_result', 'filename': filename, 'tokens': 0, 'success': False, 'error': error_msg})}\n\n"
+                await asyncio.sleep(0)
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'下載結果失敗：{str(e)[:200]}'})}\n\n"
+            return
+
+        yield f"data: {json.dumps({'type': 'batch_done', 'total': total, 'succeeded': succeeded, 'failed': failed, 'total_tokens': total_tokens, 'elapsed': round(time.time() - t0, 1), 'failed_files': failed_files})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── 標準模式 ────────────────────────────────────────────────────────────────
@@ -425,6 +549,24 @@ async def run_batch_api(job_id: str, queue: asyncio.Queue):
 
     total = len(txt_files)
     batch_start = time.time()
+
+    _created_str = time.strftime("%Y-%m-%d %H:%M")
+    try:
+        from datetime import timezone as _tz
+        _dt = batch.created_at
+        if _dt.tzinfo is None:
+            _dt = _dt.replace(tzinfo=_tz.utc)
+        _created_str = _dt.astimezone().strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        pass
+    save_batch_history(batch.id, _created_str, total)
+    try:
+        _map = {cid: f.name for cid, f in custom_id_map.items()}
+        (BASE_DIR / f"{batch.id}.map.json").write_text(
+            json.dumps(_map, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception:
+        pass
 
     await queue.put({
         "type": "batch_submitted",

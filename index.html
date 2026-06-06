@@ -158,6 +158,25 @@ textarea {
 }
 .unlimited-label input { accent-color: #4f6ef7; }
 
+/* batch history */
+#batch-history { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: background .15s, border-color .15s;
+}
+.history-row:hover { background: #eef2ff; border-color: #c7d2fe; }
+.history-time { color: #6b7280; white-space: nowrap; flex-shrink: 0; }
+.history-id   { font-family: 'Consolas', monospace; color: #3730a3; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-hint { font-size: 0.7rem; color: #9ca3af; white-space: nowrap; flex-shrink: 0; }
+
 /* query result */
 .query-result {
   margin-top: 10px;
@@ -472,9 +491,11 @@ textarea {
   <!-- 查詢批次進度（批次模式） -->
   <div id="batch-query-section" style="display:none">
     <div class="section-label">查詢批次進度</div>
+    <div id="batch-history"></div>
     <div class="row">
       <input type="text" id="query-batch-id" placeholder="msgbatch_…" spellcheck="false">
       <button class="btn-ghost" id="btn-check-status" onclick="checkBatchStatus()">查詢進度</button>
+      <button class="btn-ghost" id="btn-download" onclick="downloadBatch()">下載結果</button>
     </div>
     <div id="query-result" class="query-result"></div>
   </div>
@@ -506,6 +527,11 @@ textarea {
       <div id="batch-counts"></div>
       <div id="batch-status-text">提交中…</div>
     </div>
+    <!-- 下載模式 header -->
+    <div class="progress-header" id="download-bar" style="display:none">
+      <div class="spinner"></div>
+      <span id="download-text">下載中…</span>
+    </div>
     <div class="file-log" id="file-log"></div>
   </div>
 
@@ -530,6 +556,7 @@ textarea {
 const $ = id => document.getElementById(id);
 let currentJobId = null;
 let es = null;
+let downloadEs = null;
 let batchSubmitted = 0;
 
 window.addEventListener('load', loadModels);
@@ -583,6 +610,27 @@ function selectMode(mode) {
   document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
   $('token-warning-section').style.display = mode === 'batch' ? 'none' : '';
   $('batch-query-section').style.display   = mode === 'batch' ? ''     : 'none';
+  if (mode === 'batch') loadBatchHistory();
+}
+
+async function loadBatchHistory() {
+  try {
+    const resp = await fetch('/batch-history');
+    const history = await resp.json();
+    const el = $('batch-history');
+    if (!history.length) { el.innerHTML = ''; return; }
+    el.innerHTML = history.map(h => `
+      <div class="history-row" onclick="fillBatchId('${esc(h.batch_id)}')">
+        <span class="history-time">${esc(h.created_at)}</span>
+        <span class="history-id">${esc(h.batch_id)}</span>
+        <span class="history-hint">${h.total ? h.total + ' 篇　' : ''}點擊填入 ↑</span>
+      </div>`).join('');
+  } catch (e) {}
+}
+
+function fillBatchId(id) {
+  $('query-batch-id').value = id;
+  $('query-result').className = 'query-result';
 }
 
 function toggleUnlimited() {
@@ -781,6 +829,55 @@ function onError({ message }) {
   showAlert(message);
 }
 
+// ── 下載結果 ─────────────────────────────────────────────────────────────────
+
+async function downloadBatch() {
+  const bid          = $('query-batch-id').value.trim();
+  const outputFolder = $('output-folder').value.trim();
+  const inputFolder  = $('input-folder').value.trim();  // 有就傳，沒有也沒關係
+
+  if (!bid)          return showAlert('請輸入 Batch ID');
+  if (!outputFolder) return showAlert('請填寫輸出資料夾');
+
+  hideAlert();
+  if (downloadEs) { downloadEs.close(); downloadEs = null; }
+
+  $('file-log').innerHTML = '';
+  $('summary').className = 'summary'; $('summary').innerHTML = ''; $('summary').style.display = 'none';
+  $('current-bar').style.display  = 'none';
+  $('batch-card').style.display   = 'none';
+  $('download-bar').style.display = 'flex';
+  $('download-text').textContent  = `下載批次結果：${bid}`;
+  $('progress-section').style.display = 'block';
+
+  $('btn-download').disabled = true;
+
+  const url = `/download-batch/${encodeURIComponent(bid)}?output_folder=${encodeURIComponent(outputFolder)}&input_folder=${encodeURIComponent(inputFolder)}`;
+  downloadEs = new EventSource(url);
+  downloadEs.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'batch_file_result') {
+      onBatchFileResult(d);
+    } else if (d.type === 'batch_done') {
+      downloadEs.close(); downloadEs = null;
+      $('download-bar').style.display = 'none';
+      $('btn-download').disabled = false;
+      onBatchDone(d);
+    } else if (d.type === 'error') {
+      downloadEs.close(); downloadEs = null;
+      $('download-bar').style.display = 'none';
+      $('progress-section').style.display = 'none';
+      $('btn-download').disabled = false;
+      showAlert(d.message);
+    }
+  };
+  downloadEs.onerror = () => {
+    if (downloadEs) { downloadEs.close(); downloadEs = null; }
+    $('download-bar').style.display = 'none';
+    $('btn-download').disabled = false;
+  };
+}
+
 // ── 批次查詢 ─────────────────────────────────────────────────────────────────
 
 async function checkBatchStatus() {
@@ -812,8 +909,9 @@ async function checkBatchStatus() {
 function finish() {
   if (es) { es.close(); es = null; }
   $('btn-start').disabled = false;
-  $('current-bar').style.display = 'none';
-  $('batch-card').style.display  = 'none';
+  $('current-bar').style.display  = 'none';
+  $('batch-card').style.display   = 'none';
+  $('download-bar').style.display = 'none';
 }
 
 function updateBatchProgress(done, total, succeeded, errored) {
