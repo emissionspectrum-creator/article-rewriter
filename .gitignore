@@ -1,0 +1,12 @@
+# 環境變數（含 API 金鑰，絕不上傳）
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# IDE
+.vscode/
+.idea/

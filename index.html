@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文章改寫工具</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #f0f2f5;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 48px 16px 64px;
+}
+.card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  padding: 36px;
+  width: 100%;
+  max-width: 720px;
+  height: fit-content;
+}
+h1 { font-size: 1.4rem; font-weight: 700; color: #111; margin-bottom: 6px; }
+.subtitle { color: #777; font-size: 0.875rem; margin-bottom: 28px; line-height: 1.5; }
+
+/* section */
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #9ca3af;
+  margin-bottom: 10px;
+  margin-top: 22px;
+}
+.section-label:first-of-type { margin-top: 0; }
+hr { border: none; border-top: 1px solid #f0f0f0; margin: 22px 0; }
+
+/* rows */
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.row:last-child { margin-bottom: 0; }
+.row-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  width: 88px;
+  flex-shrink: 0;
+}
+
+/* inputs */
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  outline: none;
+  color: #111;
+  background: #fff;
+  transition: border-color .2s;
+}
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus { border-color: #4f6ef7; }
+input[type="text"]   { flex: 1; padding: 9px 12px; font-family: 'Consolas', monospace; }
+input[type="number"] { width: 130px; padding: 9px 12px; }
+input[type="number"]:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+select   { flex: 1; padding: 9px 12px; cursor: pointer; }
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: 'Consolas', monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  height: 110px;
+  resize: vertical;
+  margin-top: 8px;
+  display: block;
+}
+
+/* buttons */
+.btn-ghost {
+  padding: 9px 16px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-ghost:hover { background: #e5e7eb; }
+.btn-ghost:disabled { opacity: .45; cursor: not-allowed; }
+
+/* model row */
+.model-row { display: flex; gap: 8px; align-items: center; }
+.tier-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 2px 8px;
+  border-radius: 100px;
+  flex-shrink: 0;
+}
+.tier-fast     { background: #ecfdf5; color: #059669; }
+.tier-balanced { background: #eef2ff; color: #4338ca; }
+.tier-powerful { background: #fef3c7; color: #b45309; }
+
+/* mode tabs */
+.mode-tabs {
+  display: flex;
+  gap: 0;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.mode-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: #f9fafb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-right: 1.5px solid #d1d5db;
+  transition: background .15s;
+  user-select: none;
+}
+.mode-tab:last-child { border-right: none; }
+.mode-tab input[type="radio"] { display: none; }
+.mode-tab:hover:not(.active) { background: #f0f0f0; }
+.mode-tab.active { background: #eef2ff; }
+.tab-icon { font-size: 1.1rem; flex-shrink: 0; }
+.tab-name { font-size: 0.875rem; font-weight: 600; color: #111; display: block; line-height: 1.2; }
+.tab-hint { font-size: 0.72rem; color: #6b7280; }
+
+/* unlimited checkbox */
+.unlimited-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: #6b7280;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.unlimited-label input { accent-color: #4f6ef7; }
+
+/* query result */
+.query-result {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 0.82rem;
+  display: none;
+}
+.query-result.show  { display: block; }
+.query-result.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+.qr-row  { display: flex; align-items: baseline; gap: 10px; line-height: 2; }
+.qr-label { color: #6b7280; white-space: nowrap; min-width: 58px; font-size: 0.78rem; }
+.qr-value { font-weight: 600; color: #111; }
+.status-chip {
+  display: inline-block;
+  font-size: 0.68rem;
+  padding: 2px 9px;
+  border-radius: 100px;
+  font-weight: 700;
+}
+.chip-active    { background: #eef2ff; color: #4338ca; }
+.chip-done      { background: #f0fdf4; color: #15803d; }
+.chip-canceling { background: #fffbeb; color: #d97706; }
+
+/* alert */
+.alert {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  margin-top: 14px;
+}
+.alert.show { display: flex; }
+.alert.error { background: #fef2f2; color: #991b1b; }
+
+/* start button */
+.btn-start {
+  width: 100%;
+  padding: 12px;
+  background: #4f6ef7;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 22px;
+  transition: background .2s;
+}
+.btn-start:hover:not(:disabled) { background: #3a5be0; }
+.btn-start:disabled { background: #9ca3af; cursor: not-allowed; }
+
+/* progress section */
+#progress-section { display: none; margin-top: 24px; }
+.progress-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px 8px 0 0;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: #3730a3;
+}
+.file-log {
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fafafa;
+}
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  font-size: 0.8rem;
+  background: #fff;
+}
+.file-row.processing { border-color: #c7d2fe; }
+.file-row.retrying   { border-color: #fde68a; }
+.file-row.success    { border-color: #bbf7d0; }
+.file-row.failed     { border-color: #fecaca; }
+.file-name {
+  flex: 1;
+  font-family: 'Consolas', monospace;
+  color: #111;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.file-meta  { display: flex; gap: 8px; flex-shrink: 0; }
+.meta-item  { color: #6b7280; font-size: 0.73rem; white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-ok  { background: #16a34a; }
+.dot-err { background: #dc2626; }
+
+/* batch status header */
+#batch-card { display: none; padding: 10px 14px; }
+.batch-id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.batch-id-lbl { font-size: 0.72rem; color: #6b7280; white-space: nowrap; }
+#batch-id-text {
+  font-family: 'Consolas', monospace;
+  font-size: 0.78rem;
+  color: #3730a3;
+  background: #fff;
+  border: 1px solid #c7d2fe;
+  border-radius: 5px;
+  padding: 2px 8px;
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.btn-copy {
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #fff;
+  color: #4f6ef7;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.btn-copy:hover { background: #eef2ff; }
+.prog-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.prog-bar { flex: 1; height: 5px; background: #dde3ff; border-radius: 3px; overflow: hidden; }
+#batch-progress-fill { height: 100%; background: #4f6ef7; border-radius: 3px; transition: width .4s; width: 0%; }
+#batch-progress-text { font-size: 0.72rem; color: #3730a3; white-space: nowrap; flex-shrink: 0; }
+#batch-counts { font-size: 0.75rem; color: #4338ca; margin-bottom: 3px; }
+#batch-status-text { font-size: 0.75rem; color: #6b7280; }
+
+/* spinner */
+.spinner {
+  width: 13px; height: 13px;
+  border: 2px solid #c7d2fe;
+  border-top-color: #4f6ef7;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* summary */
+.summary {
+  margin-top: 16px;
+  border-radius: 8px;
+  padding: 18px 20px;
+  display: none;
+}
+.summary.done    { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.summary.stopped { background: #fffbeb; border: 1px solid #fde68a; }
+.summary.quota   { background: #fef2f2; border: 1px solid #fecaca; }
+.sum-title { font-size: 0.9rem; font-weight: 700; margin-bottom: 10px; }
+.done .sum-title    { color: #15803d; }
+.stopped .sum-title { color: #b45309; }
+.quota .sum-title   { color: #991b1b; }
+.sum-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  margin-bottom: 10px;
+}
+.sum-stat { color: #374151; }
+.sum-stat strong { color: #111; }
+.failed-list { margin-top: 8px; }
+.failed-list-title { font-size: 0.78rem; font-weight: 600; color: #dc2626; margin-bottom: 4px; }
+.failed-item { font-size: 0.75rem; color: #dc2626; font-family: 'Consolas', monospace; padding: 1px 0; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.two-col-section h4 { font-size: 0.78rem; font-weight: 600; margin-bottom: 4px; }
+.done-col h4   { color: #15803d; }
+.todo-col h4   { color: #b45309; }
+.two-col-section ul { list-style: none; }
+.two-col-section li { font-size: 0.73rem; font-family: 'Consolas', monospace; padding: 1px 0; color: #6b7280; }
+
+/* modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 30px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 8px 40px rgba(0,0,0,.18);
+}
+.modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+.modal p  { font-size: 0.875rem; color: #6b7280; margin-bottom: 22px; line-height: 1.6; }
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-outline {
+  padding: 9px 18px;
+  background: #fff;
+  color: #374151;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-outline:hover { border-color: #9ca3af; }
+.btn-primary {
+  padding: 9px 18px;
+  background: #4f6ef7;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #3a5be0; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <h1>文章改寫工具</h1>
+  <p class="subtitle">批次改寫 .txt 檔案，每個檔案獨立呼叫 API，不共享對話記錄。</p>
+
+  <!-- 路徑設定 -->
+  <div class="section-label">路徑設定</div>
+  <div class="row">
+    <span class="row-label">輸入資料夾</span>
+    <input type="text" id="input-folder" placeholder="C:\path\to\input" spellcheck="false">
+    <button class="btn-ghost" onclick="browseFolder('input-folder')">瀏覽</button>
+  </div>
+  <div class="row">
+    <span class="row-label">輸出資料夾</span>
+    <input type="text" id="output-folder" placeholder="C:\path\to\output" spellcheck="false">
+    <button class="btn-ghost" onclick="browseFolder('output-folder')">瀏覽</button>
+  </div>
+
+  <hr>
+
+  <!-- 提示詞 -->
+  <div class="section-label">提示詞</div>
+  <button class="btn-ghost" onclick="browsePrompt()">載入提示詞檔案…</button>
+  <textarea id="prompt" placeholder="在此輸入改寫提示詞，或從 .txt 檔案載入…"></textarea>
+
+  <hr>
+
+  <!-- 模型與處理模式 -->
+  <div class="section-label">模型與處理模式</div>
+  <div class="model-row">
+    <select id="model" onchange="updateTierBadge()">
+      <option value="">載入中…</option>
+    </select>
+    <span id="tier-badge" class="tier-badge"></span>
+  </div>
+  <div class="mode-tabs">
+    <label class="mode-tab active" id="tab-standard" onclick="selectMode('standard')">
+      <input type="radio" name="mode" value="standard" checked>
+      <span class="tab-icon">⚡</span>
+      <span>
+        <span class="tab-name">標準模式</span>
+        <span class="tab-hint">即時串流 · 逐檔處理</span>
+      </span>
+    </label>
+    <label class="mode-tab" id="tab-batch" onclick="selectMode('batch')">
+      <input type="radio" name="mode" value="batch">
+      <span class="tab-icon">📦</span>
+      <span>
+        <span class="tab-name">批次 API</span>
+        <span class="tab-hint">非同步 · 省 50% 費用</span>
+      </span>
+    </label>
+  </div>
+
+  <hr>
+
+  <!-- Token 用量控制（標準模式） -->
+  <div id="token-warning-section">
+    <div class="section-label">Token 用量控制</div>
+    <div class="row">
+      <span class="row-label">警告閾值</span>
+      <input type="number" id="token-threshold" value="100000" min="0" step="10000">
+      <span style="font-size:.8rem;color:#6b7280">累計 token</span>
+      <label class="unlimited-label">
+        <input type="checkbox" id="unlimited-cb" onchange="toggleUnlimited()">
+        不限制
+      </label>
+    </div>
+  </div>
+
+  <!-- 查詢批次進度（批次模式） -->
+  <div id="batch-query-section" style="display:none">
+    <div class="section-label">查詢批次進度</div>
+    <div class="row">
+      <input type="text" id="query-batch-id" placeholder="msgbatch_…" spellcheck="false">
+      <button class="btn-ghost" id="btn-check-status" onclick="checkBatchStatus()">查詢進度</button>
+    </div>
+    <div id="query-result" class="query-result"></div>
+  </div>
+
+  <!-- 錯誤提示 -->
+  <div class="alert error" id="alert"><span id="alert-msg"></span></div>
+
+  <!-- 開始按鈕 -->
+  <button class="btn-start" id="btn-start" onclick="startBatch()">開始處理</button>
+
+  <!-- 進度區 -->
+  <div id="progress-section">
+    <!-- 標準模式 header -->
+    <div class="progress-header" id="current-bar">
+      <div class="spinner"></div>
+      <span id="current-text">初始化中…</span>
+    </div>
+    <!-- 批次模式 header -->
+    <div class="progress-header" id="batch-card" style="display:none;flex-direction:column;align-items:stretch;">
+      <div class="batch-id-row">
+        <span class="batch-id-lbl">批次 ID</span>
+        <span id="batch-id-text"></span>
+        <button class="btn-copy" onclick="copyBatchId()">複製</button>
+      </div>
+      <div class="prog-wrap">
+        <div class="prog-bar"><div id="batch-progress-fill"></div></div>
+        <span id="batch-progress-text">0 / 0</span>
+      </div>
+      <div id="batch-counts"></div>
+      <div id="batch-status-text">提交中…</div>
+    </div>
+    <div class="file-log" id="file-log"></div>
+  </div>
+
+  <!-- 摘要 -->
+  <div class="summary" id="summary"></div>
+
+</div><!-- /card -->
+
+<!-- Token 警告 Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>⚠ Token 用量警告</h3>
+    <p id="modal-msg"></p>
+    <div class="modal-btns">
+      <button class="btn-outline" onclick="stopFromModal()">停止</button>
+      <button class="btn-primary" onclick="continueFromModal()">繼續</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let currentJobId = null;
+let es = null;
+let batchSubmitted = 0;
+
+window.addEventListener('load', loadModels);
+
+// ── 初始化 ──────────────────────────────────────────────────────────────────
+
+async function loadModels() {
+  try {
+    const resp = await fetch('/models');
+    const data = await resp.json();
+    const sel = $('model');
+    sel.innerHTML = '';
+    if (data.error || !data.models.length) {
+      sel.innerHTML = `<option value="">${data.error || '無可用模型'}</option>`;
+      return;
+    }
+    const DEFAULT = 'claude-sonnet-4-20250514';
+    let found = false;
+    for (const m of data.models) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.tier ? `${m.name} — ${m.tier}` : m.name;
+      opt.dataset.tier = m.tier || '';
+      sel.appendChild(opt);
+      if (m.id === DEFAULT) found = true;
+    }
+    if (found) {
+      sel.value = DEFAULT;
+    } else {
+      const s = [...sel.options].find(o => o.value.includes('sonnet'));
+      if (s) sel.value = s.value;
+    }
+    updateTierBadge();
+  } catch (e) {
+    $('model').innerHTML = '<option value="">模型載入失敗</option>';
+  }
+}
+
+function updateTierBadge() {
+  const sel = $('model');
+  const tier = sel.options[sel.selectedIndex]?.dataset?.tier || '';
+  const badge = $('tier-badge');
+  badge.className = 'tier-badge';
+  badge.textContent = tier;
+  if (tier) badge.classList.add('tier-' + tier);
+}
+
+function selectMode(mode) {
+  $('tab-standard').classList.toggle('active', mode === 'standard');
+  $('tab-batch').classList.toggle('active', mode === 'batch');
+  document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
+  $('token-warning-section').style.display = mode === 'batch' ? 'none' : '';
+  $('batch-query-section').style.display   = mode === 'batch' ? ''     : 'none';
+}
+
+function toggleUnlimited() {
+  const cb = $('unlimited-cb'), inp = $('token-threshold');
+  if (cb.checked) { inp.dataset.prev = inp.value; inp.value = '0'; inp.disabled = true; }
+  else            { inp.value = inp.dataset.prev || '100000';       inp.disabled = false; }
+}
+
+// ── 瀏覽 ────────────────────────────────────────────────────────────────────
+
+async function browseFolder(id) {
+  try { const r = await fetch('/browse'); const d = await r.json(); if (d.path) $(id).value = d.path; }
+  catch (e) { alert('無法開啟資料夾選擇器：' + e.message); }
+}
+async function browsePrompt() {
+  try { const r = await fetch('/browse-file'); const d = await r.json(); if (d.content !== undefined) $('prompt').value = d.content; }
+  catch (e) { alert('無法開啟檔案選擇器：' + e.message); }
+}
+
+// ── 開始處理 ─────────────────────────────────────────────────────────────────
+
+async function startBatch() {
+  const inputFolder  = $('input-folder').value.trim();
+  const outputFolder = $('output-folder').value.trim();
+  const prompt       = $('prompt').value.trim();
+  const model        = $('model').value;
+  const mode         = document.querySelector('input[name="mode"]:checked').value;
+  const threshold    = parseInt($('token-threshold').value) || 0;
+
+  if (!inputFolder)  return showAlert('請輸入輸入資料夾路徑。');
+  if (!outputFolder) return showAlert('請輸入輸出資料夾路徑。');
+  if (!prompt)       return showAlert('請輸入提示詞。');
+  if (!model)        return showAlert('請選擇模型。');
+
+  hideAlert();
+  $('btn-start').disabled = true;
+  $('file-log').innerHTML = '';
+  $('summary').className = 'summary';
+  $('summary').innerHTML = '';
+  $('summary').style.display = 'none';
+
+  $('current-bar').style.display = mode === 'standard' ? 'flex' : 'none';
+  $('batch-card').style.display  = mode === 'batch'    ? 'flex' : 'none';
+  if (mode === 'standard') $('current-text').textContent = '初始化中…';
+  $('progress-section').style.display = 'block';
+
+  if (es) { es.close(); es = null; }
+
+  try {
+    const resp = await fetch('/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input_folder: inputFolder, output_folder: outputFolder, prompt, model, token_threshold: threshold, mode }),
+    });
+    const data = await resp.json();
+    currentJobId = data.job_id;
+  } catch (e) {
+    showAlert('啟動失敗：' + e.message);
+    $('btn-start').disabled = false;
+    return;
+  }
+
+  es = new EventSource('/stream/' + currentJobId);
+  es.onmessage = e => handleEvent(JSON.parse(e.data));
+  es.onerror = () => { es.close(); es = null; $('btn-start').disabled = false; };
+}
+
+// ── SSE 事件 ─────────────────────────────────────────────────────────────────
+
+function handleEvent(d) {
+  const h = {
+    file_start: onFileStart, file_done: onFileDone, retry: onRetry,
+    token_warning: onTokenWarning, quota_exceeded: onQuotaExceeded,
+    stopped: onStopped, batch_done: onBatchDone,
+    batch_submitted: onBatchSubmitted, batch_polling: onBatchPolling,
+    batch_downloading: onBatchDownloading, batch_file_result: onBatchFileResult,
+    error: onError,
+  };
+  h[d.type]?.(d);
+}
+
+function onFileStart({ index, total, filename }) {
+  $('current-text').textContent = `第 ${index} 檔 / 共 ${total} 檔：${filename}`;
+  const row = document.createElement('div');
+  row.className = 'file-row processing';
+  row.id = 'row-' + index;
+  row.innerHTML = `<div class="spinner"></div><span class="file-name">${esc(filename)}</span><span class="meta-item" id="meta-${index}">處理中…</span>`;
+  $('file-log').appendChild(row);
+  row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function onFileDone({ index, filename, tokens, elapsed, success, error }) {
+  const row = $('row-' + index);
+  if (!row) return;
+  if (success) {
+    row.className = 'file-row success';
+    row.innerHTML = `<span class="dot dot-ok"></span><span class="file-name">${esc(filename)}</span>
+      <span class="file-meta"><span class="meta-item">${fmt(tokens)} tokens</span><span class="meta-item">${elapsed}s</span></span>`;
+  } else {
+    row.className = 'file-row failed';
+    row.innerHTML = `<span class="dot dot-err"></span><span class="file-name">${esc(filename)}</span>
+      <span class="file-meta"><span class="meta-item" style="color:#dc2626">${esc(error||'失敗')}</span><span class="meta-item">${elapsed}s</span></span>`;
+  }
+}
+
+function onRetry({ index, attempt }) {
+  const row = $('row-' + index), meta = $('meta-' + index);
+  if (row) row.className = 'file-row retrying';
+  if (meta) meta.textContent = `速率限制，等待 60 秒（第 ${attempt}/2 次重試）…`;
+}
+
+function onTokenWarning({ cumulative_tokens, threshold }) {
+  $('modal-msg').innerHTML = `累計 Token 已達 <strong>${fmt(cumulative_tokens)}</strong>，超過警告閾值 ${fmt(threshold)}。<br><br>是否繼續處理剩餘檔案？`;
+  $('modal-overlay').classList.add('show');
+}
+
+async function continueFromModal() {
+  $('modal-overlay').classList.remove('show');
+  await fetch('/resume/' + currentJobId, { method: 'POST' });
+}
+async function stopFromModal() {
+  $('modal-overlay').classList.remove('show');
+  await fetch('/stop/' + currentJobId, { method: 'POST' });
+}
+
+function onQuotaExceeded({ stopped_at, total, completed, remaining }) {
+  finish();
+  showSummary('quota', `<div class="sum-title">每日配額已用盡</div>
+    <p style="font-size:.83rem;color:#6b7280;margin-bottom:8px">於第 ${stopped_at} / ${total} 檔時停止。</p>
+    ${twoCol(completed, remaining)}`);
+}
+
+function onStopped({ completed, remaining, batch_id }) {
+  finish();
+  const note = batch_id ? `<p style="font-size:.78rem;color:#6b7280;margin-top:6px">批次 ID：<code style="font-family:Consolas">${esc(batch_id)}</code></p>` : '';
+  showSummary('stopped', `<div class="sum-title">已停止處理</div>${note}${twoCol(completed, remaining)}`);
+}
+
+function onBatchDone({ total, succeeded, failed, total_tokens, elapsed, failed_files }) {
+  finish();
+  let html = `<div class="sum-title">處理完成</div>
+    <div class="sum-stats">
+      <div class="sum-stat">總計 <strong>${total}</strong></div>
+      <div class="sum-stat">成功 <strong style="color:#15803d">${succeeded}</strong></div>
+      <div class="sum-stat">失敗 <strong style="color:#dc2626">${failed}</strong></div>
+      <div class="sum-stat">Token <strong>${fmt(total_tokens)}</strong></div>
+      <div class="sum-stat">耗時 <strong>${elapsed}s</strong></div>
+    </div>`;
+  if (failed_files.length) {
+    html += `<div class="failed-list"><div class="failed-list-title">失敗清單</div>`;
+    for (const f of failed_files) html += `<div class="failed-item">${esc(f.filename)} — ${esc(f.error)}</div>`;
+    html += '</div>';
+  }
+  showSummary('done', html);
+}
+
+function onBatchSubmitted({ batch_id, total, submitted, pre_failed }) {
+  batchSubmitted = submitted;
+  $('batch-id-text').textContent = batch_id;
+  $('query-batch-id').value = batch_id;
+  updateBatchProgress(0, submitted, 0, 0);
+  $('batch-status-text').textContent = '批次已提交，等待 Anthropic 處理（約每 30 秒更新）…';
+  if (pre_failed > 0) $('batch-counts').textContent = `⚠ ${pre_failed} 個檔案讀取失敗，未納入批次`;
+}
+
+function onBatchPolling({ processing_status, request_counts: rc }) {
+  const done = rc.succeeded + rc.errored + rc.expired + rc.canceled;
+  updateBatchProgress(done, batchSubmitted, rc.succeeded, rc.errored);
+  $('batch-status-text').textContent = processing_status === 'ended'
+    ? '批次已完成，正在下載結果…'
+    : `處理中… 已完成 ${done} / ${batchSubmitted}，每 30 秒更新`;
+}
+
+function onBatchDownloading() {
+  $('batch-status-text').textContent = '下載結果中…';
+}
+
+function onBatchFileResult({ filename, tokens, success, error }) {
+  const row = document.createElement('div');
+  row.className = success ? 'file-row success' : 'file-row failed';
+  if (success) {
+    row.innerHTML = `<span class="dot dot-ok"></span><span class="file-name">${esc(filename)}</span>
+      <span class="file-meta"><span class="meta-item">${fmt(tokens)} tokens</span></span>`;
+  } else {
+    row.innerHTML = `<span class="dot dot-err"></span><span class="file-name">${esc(filename)}</span>
+      <span class="file-meta"><span class="meta-item" style="color:#dc2626">${esc(error||'失敗')}</span></span>`;
+  }
+  $('file-log').appendChild(row);
+  row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function onError({ message }) {
+  if (es) { es.close(); es = null; }
+  $('btn-start').disabled = false;
+  $('progress-section').style.display = 'none';
+  showAlert(message);
+}
+
+// ── 批次查詢 ─────────────────────────────────────────────────────────────────
+
+async function checkBatchStatus() {
+  const bid = $('query-batch-id').value.trim();
+  if (!bid) return;
+  const btn = $('btn-check-status'), box = $('query-result');
+  btn.disabled = true; btn.textContent = '查詢中…';
+  box.className = 'query-result'; box.innerHTML = '';
+  try {
+    const resp = await fetch('/batch-status/' + encodeURIComponent(bid));
+    const d = await resp.json();
+    if (d.error) { box.className = 'query-result error show'; box.innerHTML = esc(d.error); return; }
+    const chip = d.status === '已完成' ? 'chip-done' : d.status === '取消中' ? 'chip-canceling' : 'chip-active';
+    box.className = 'query-result show';
+    box.innerHTML = `
+      <div class="qr-row"><span class="qr-label">狀態</span><span class="status-chip ${chip}">${esc(d.status)}</span></div>
+      <div class="qr-row"><span class="qr-label">已完成</span><span class="qr-value">${fmt(d.done)} / ${fmt(d.total)} 篇（${d.pct}%）</span></div>
+      <div class="qr-row"><span class="qr-label">成功</span><span class="qr-value" style="color:#15803d">${fmt(d.succeeded)} 篇</span></div>
+      <div class="qr-row"><span class="qr-label">失敗</span><span class="qr-value" style="color:#dc2626">${fmt(d.failed)} 篇</span></div>
+      <div class="qr-row"><span class="qr-label">處理中</span><span class="qr-value">${fmt(d.processing)} 篇</span></div>
+      ${d.created_at ? `<div class="qr-row"><span class="qr-label">送出時間</span><span class="qr-value">${esc(d.created_at)}</span></div>` : ''}`;
+  } catch (e) {
+    box.className = 'query-result error show'; box.innerHTML = '查詢失敗：' + esc(e.message);
+  } finally { btn.disabled = false; btn.textContent = '查詢進度'; }
+}
+
+// ── 工具函式 ──────────────────────────────────────────────────────────────────
+
+function finish() {
+  if (es) { es.close(); es = null; }
+  $('btn-start').disabled = false;
+  $('current-bar').style.display = 'none';
+  $('batch-card').style.display  = 'none';
+}
+
+function updateBatchProgress(done, total, succeeded, errored) {
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  $('batch-progress-fill').style.width = pct + '%';
+  $('batch-progress-text').textContent = `${done} / ${total}`;
+  $('batch-counts').textContent = `✓ 成功 ${succeeded}　✗ 失敗 ${errored}　⟳ 剩餘 ${Math.max(0, total - done)}`;
+}
+
+function copyBatchId() {
+  navigator.clipboard.writeText($('batch-id-text').textContent).catch(() => {});
+}
+
+function showAlert(msg) { $('alert').classList.add('show'); $('alert-msg').textContent = msg; }
+function hideAlert() { $('alert').classList.remove('show'); }
+
+function showSummary(type, html) {
+  const el = $('summary');
+  el.className = `summary ${type}`;
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function twoCol(completed, remaining) {
+  const li = arr => arr.map(f => `<li>${esc(f)}</li>`).join('');
+  return `<div class="two-col">
+    <div class="two-col-section done-col"><h4>已完成（${completed.length}）</h4><ul>${li(completed)}</ul></div>
+    <div class="two-col-section todo-col"><h4>未處理（${remaining.length}）</h4><ul>${li(remaining)}</ul></div>
+  </div>`;
+}
+
+function fmt(n) { return (n || 0).toLocaleString(); }
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
